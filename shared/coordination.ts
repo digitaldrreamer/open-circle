@@ -107,7 +107,16 @@ export function isHelperHistory(value: unknown): value is HelperHistory {
   });
 }
 
+export interface InteractionCounts {
+  messages: number; replies: number; media: number; pollVotes: number;
+  messagesReactedTo: number; reactionAdds: number; reactionRemovals: number; reactionsReceived: number;
+}
+
 export interface ActivitySummary {
+  engagement?: {
+    startedAt: number | null; week: string; warnings: number; enforcement: boolean;
+    total: InteractionCounts; weekly: InteractionCounts;
+  };
   linked: boolean;
   login: string | null;
   enabled: boolean;
@@ -301,6 +310,11 @@ export interface CommunityAdminState {
 }
 
 export interface CoordinationAdminState {
+  engagement?: {
+    generatedAt: number; startedAt: number | null; timezone: string; enforcement: boolean; schedule: string;
+    weeks: { key: string; complete: boolean; observedMs: number; members: { memberId: string; counts: InteractionCounts; warnings: { stage: number; at: number }[]; exempt: boolean; removal: string }[] }[];
+    members: { id: string; name: string; active: boolean; admin: boolean; startedAt: number | null; week: string; total: InteractionCounts; weekly: InteractionCounts; warnings: number; enforcement: boolean; engaged: boolean }[];
+  };
   community?: CommunityAdminState;
   policy: CoordinationPolicy;
   tracking: boolean;

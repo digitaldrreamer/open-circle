@@ -255,7 +255,7 @@ const Index = () => {
               {activeTab === "tools" ? "Developer tools" : activeTab === "repositories" ? "Repository spotlight" : "Developer leaderboard"}
             </h2>
             <Tabs
-              className="grid grid-cols-1 items-start gap-x-3 sm:grid-cols-[1fr_auto]"
+              className="grid grid-cols-1 items-start gap-x-3 sm:grid-cols-[auto_1fr]"
               value={activeTab}
               onValueChange={(value) => {
                 selectPage(`${value === "developers" ? "/" : `/${value}`}${periodSearch}`);
@@ -303,7 +303,7 @@ const Index = () => {
                     const query = search.toString();
                     selectPage(`${location.pathname}${query ? `?${query}` : ""}`);
                   }}>
-                  <div className="mb-5 flex justify-center sm:mb-8 sm:justify-end">
+                  <div className="mb-5 flex justify-center sm:mb-8 sm:justify-start">
                     <TabsList aria-label="Ranking period">
                       {RANKING_PERIODS.map((value) => <TabsTrigger key={value} value={value} className="min-h-11 px-3 text-xs data-[state=active]:bg-foreground/[0.1] sm:px-4 sm:text-xs">{rankingPeriodLabels[value]}</TabsTrigger>)}
                     </TabsList>

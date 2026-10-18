@@ -37,9 +37,9 @@ export default function Events() {
   const access = error instanceof ApiError && error.status === 403;
   const data = (admin || (!!identity && !community.isError)) ? query.data : undefined;
   useEffect(() => { if (slug && data && !("events" in data) && slug !== data.slug) navigate({ pathname: `/events/${data.slug}`, search: location.search, hash: location.hash }, { replace: true }); }, [slug, data, navigate, location.search, location.hash]);
-  return <div className="relative min-h-dvh"><div className="app-backdrop" aria-hidden /><AccountCorner /><main className="page-container relative z-10 min-w-0 pb-40 pt-28">
+  return <div className="relative min-h-dvh"><div className="app-backdrop" aria-hidden /><AccountCorner /><main className={`page-container relative z-10 min-w-0 pb-40 ${slug ? "pt-28" : "pt-[calc(1rem+env(safe-area-inset-top))] sm:pt-28"}`}>
     <div className="mx-auto max-w-4xl space-y-6">
-      {slug ? <Link className="inline-flex min-h-11 items-center text-sm text-t3 underline underline-offset-4" to="/events">All events</Link> : <h1 className="text-3xl font-medium tracking-[-0.03em]">Community</h1>}
+      {slug ? <Link className="inline-flex min-h-11 items-center text-sm text-t3 underline underline-offset-4" to="/events">All events</Link> : <h1 className="flex min-h-11 items-center pr-28 text-[22px] font-medium tracking-[-0.03em] min-[360px]:text-2xl sm:min-h-0 sm:pr-0 sm:text-3xl">Community</h1>}
       <CommunitySections section="events">
       {!slug && <h2 className="my-5 text-xl font-medium">Events</h2>}
       {admin && <p role="status" className="text-sm text-warn">Admin preview · {data && "published" in data && data.published ? "Published" : "Draft / unpublished"}</p>}

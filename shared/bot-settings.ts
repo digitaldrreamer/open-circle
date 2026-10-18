@@ -3,6 +3,7 @@ import type { CommunitySettings, CoordinationPolicy } from "./coordination.js";
 const option = <T extends boolean | number>(label: string, section: string, description: string, value: T, min = 0, max = 0) => ({ label, section, description, value, min, max });
 
 export const BOT_OPTION_FIELDS = {
+  weeklyEngagementEnforcement: option("Weekly inactivity warnings and removal", "moderation", "Tag inactive members Tuesday, Thursday and Saturday at 19:00. Remove on Monday after a fully observed week and three delivered warnings. Admins, settling-in members, breaks and incomplete weeks are protected. Off until enabled.", false),
   welcomeEnabled: option("Welcome new members", "welcome", "Queue newcomers for the next scheduled batch. Turning this off keeps the queue for later.", true),
   welcomeGreetingEnabled: option("Send a separate greeting", "welcome", "Send the greeting before the instructions. Both messages share one batch.", true),
   welcomeTagging: option("Tag newcomers", "welcome", "Use real WhatsApp mentions in the greeting. Turning this off sends no newcomer tags.", true),

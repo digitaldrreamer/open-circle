@@ -101,7 +101,7 @@ function SignIn({ configured }: { configured: boolean }) {
   return <section className="mx-auto flex min-h-[calc(100dvh-12rem)] max-w-md flex-col items-center justify-center gap-5 px-2 text-center" aria-labelledby="admin-title">
     <h1 id="admin-title" className="text-2xl font-medium tracking-tight">Sign in</h1>
     <p className="text-sm leading-relaxed text-t2">{configured ? "Approved GitHub accounts only." : "Admin access hasn't been set up. The site owner needs to enable approved GitHub accounts."}</p>
-    {configured && <MetalButton asChild className="h-11 w-auto" innerClassName="px-5"><a href="/api/auth-start?returnTo=%2Fadmin"><GitHubIcon className="size-4" aria-hidden /> Continue with GitHub</a></MetalButton>}
+    {configured && <MetalButton asChild wrapperClassName="self-center" className="h-11 w-auto" innerClassName="px-5"><a href="/api/auth-start?returnTo=%2Fadmin"><GitHubIcon className="size-4" aria-hidden /> Continue with GitHub</a></MetalButton>}
   </section>;
 }
 
