@@ -40,6 +40,30 @@ beforeEach(async () => {
   for (const [token, id, login, prefix] of [[aliceToken, 2, "Alice", ""], [bobToken, 3, "Bob", ""], [adminToken, 1, "Admin", "admin:"]] as const) await sessions.createSession(createHash("sha256").update(`${prefix}${token}`).digest("hex"), { id, login, avatarUrl: "" }, Date.now() + 60000);
 });
 afterEach(() => { vi.unstubAllEnvs(); vi.unstubAllGlobals(); });
+it("persists private per-account comment likes through authenticated handlers and rejects unverified changes", async () => {
+  const created = await adminApi.POST(req(cmd({ action: "create", kind: "discussion", content, publish: true }), adminToken, true));
+  const post = await created.json() as ForumDetail;
+  const commented = await memberApi.POST(req(cmd({ action: "comment", id: post.id, body: "An HTTP comment to like" })));
+  const comment = (await commented.json() as ForumDetail).comments[0];
+  const like = cmd({ action: "like", id: post.id, commentId: comment.id, liked: true, author: { id: 999 } });
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const response = await memberApi.POST(req(like, bobToken));
+    expect(response.status).toBe(200);
+    const data = await response.json() as ForumDetail;
+    expect(data.comments[0]).toMatchObject({ likeCount: 1, liked: true });
+    expect(JSON.stringify(data)).not.toContain("likedBy");
+    expect(data.likeCount).toBe(0);
+  }
+  const aliceResponse = await memberApi.GET(req(undefined, aliceToken, false, `?id=${post.id}`));
+  expect((await aliceResponse.json()).comments[0]).toMatchObject({ likeCount: 1, liked: false });
+  expect(aliceResponse.headers.get("cache-control")).toBe("private, no-store");
+  expect(aliceResponse.headers.get("vary")).toBe("Cookie");
+  linked = false;
+  expect((await memberApi.POST(req(cmd({ action: "like", id: post.id, commentId: comment.id, liked: false }), bobToken))).status).toBe(403);
+  linked = true;
+  const removed = await memberApi.POST(req(cmd({ action: "like", id: post.id, commentId: comment.id, liked: false }), bobToken));
+  expect((await removed.json()).comments[0]).toMatchObject({ likeCount: 0, liked: false });
+});
 it("resolves existing author names across feeds, comments, reports and audit without rewriting posts or exposing member records", async () => {
   const created = await adminApi.POST(req(cmd({ action: "create", kind: "discussion", content, publish: true }), adminToken, true));
   const post = await created.json() as ForumDetail;

@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { forumCategories, FORUM_PAGE_SIZE, type ForumAggregate, type ForumAuthor, type ForumCommand, type ForumContent, type ForumDetail, type ForumFilter, type ForumPage, type ForumPoll, type ForumSummary, type ForumThread } from "../shared/forum.js";
+import { forumCategories, FORUM_PAGE_SIZE, type ForumAggregate, type ForumAuthor, type ForumCommand, type ForumComment, type ForumCommentView, type ForumContent, type ForumDetail, type ForumFilter, type ForumPage, type ForumPoll, type ForumSummary, type ForumThread } from "../shared/forum.js";
 import type { ParticipationState } from "../shared/coordination.js";
 import { getCommunityStore } from "./community-store.js";
 import { githubProfile } from "./github-auth.js";
@@ -90,6 +90,10 @@ function summary(t: ForumThread, viewer: ForumViewer, count: number, mine = fals
   };
 }
 function pollBallot(value: ForumPoll): string { return createHash("sha256").update(JSON.stringify({ question: value.question, options: value.options.map(({ id, label }) => ({ id, label })), closesAt: value.closesAt, closed: value.closed })).digest("hex"); }
+function commentView(comment: ForumComment, viewer: ForumViewer): ForumCommentView {
+  const { likedBy, ...visible } = comment;
+  return { ...visible, likeCount: likedBy?.length ?? 0, liked: likedBy?.includes(viewer.profile.id) ?? false };
+}
 function detail(data: ForumAggregate, viewer: ForumViewer, page = 1, now = Date.now()): ForumDetail {
   const t = data.thread!;
   visible(t, viewer);
@@ -101,10 +105,10 @@ function detail(data: ForumAggregate, viewer: ForumViewer, page = 1, now = Date.
   for (const choice of Object.values(data.votes)) if (choice in counts) counts[choice]++;
   const privateView = viewer.admin || t.author.id === viewer.profile.id;
   return {
-    ...summary(t, viewer, visibleComments.length), comments: visibleComments.filter((c) => ids.has(c.id)), commentTotal: visibleComments.length, commentPage: page,
+    ...summary(t, viewer, visibleComments.length), comments: visibleComments.filter((c) => ids.has(c.id)).map((c) => commentView(c, viewer)), commentTotal: visibleComments.length, commentPage: page,
     poll: t.poll && (t.published || viewer.admin) ? { ...t.poll, ballot: pollBallot(t.poll), counts, total: Object.values(counts).reduce((a, b) => a + b, 0), selected: data.votes[String(viewer.profile.id)] ?? null, open: !!t.published && !t.hidden && !t.poll.closed && (t.poll.closesAt === null || t.poll.closesAt > now) } : null,
     ...(privateView ? { revision: t.revision, reviewReason: t.reviewReason, submittedAt: t.submittedAt } : {}),
-    ...(viewer.admin ? { reports: data.reports.map((report) => ({ ...report, ...(report.commentId ? { reportedComment: data.comments.find((comment) => comment.id === report.commentId) } : {}) })), audit: data.audit } : {}),
+    ...(viewer.admin ? { reports: data.reports.map((report) => { const comment = data.comments.find((c) => c.id === report.commentId); return { ...report, ...(comment ? { reportedComment: commentView(comment, viewer) } : {}) }; }), audit: data.audit } : {}),
   };
 }
 export async function listForum(store: ForumStore, viewer: ForumViewer, filter: ForumFilter): Promise<ForumPage> {
@@ -168,9 +172,16 @@ export async function commandForum(store: ForumStore, viewer: ForumViewer, input
         data.comments.push({ id: randomUUID(), parentId: parent?.id ?? null, author: viewer.profile, body: text(command.body, 1, 6000, "a comment"), createdAt: now, hidden: false });
       } else if (command.action === "like") {
         if (!t.published || t.hidden) missing();
-        if (typeof command.liked !== "boolean") invalid("Choose whether to like this post.");
-        const likedBy = t.likedBy ?? [];
-        t.likedBy = command.liked ? Array.from(new Set([...likedBy, viewer.profile.id])) : likedBy.filter((id) => id !== viewer.profile.id);
+        if (typeof command.liked !== "boolean") invalid("Choose whether to like this content.");
+        let target: ForumThread | ForumComment = t;
+        if (command.commentId !== undefined && command.commentId !== null) {
+          if (typeof command.commentId !== "string" || !uuidPattern.test(command.commentId)) invalid("Choose a valid comment.");
+          const comment = data.comments.find((c) => c.id === command.commentId && !c.hidden && !data.comments.some((parent) => parent.id === c.parentId && parent.hidden));
+          if (!comment) missing();
+          target = comment;
+        }
+        const likedBy = target.likedBy ?? [];
+        target.likedBy = command.liked ? Array.from(new Set([...likedBy, viewer.profile.id])) : likedBy.filter((id) => id !== viewer.profile.id);
       } else if (command.action === "vote") {
         if (!t.published || t.hidden || !t.poll || t.poll.closed || (t.poll.closesAt !== null && t.poll.closesAt <= now)) throw new HttpError(409, "poll_closed", "Voting is closed on this poll.");
         if (command.ballot !== pollBallot(t.poll)) throw new HttpError(409, "poll_changed", "This poll changed. Reload it before voting. Your vote was not saved.");

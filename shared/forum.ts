@@ -16,7 +16,8 @@ export interface ForumThread {
   poll: ForumPoll | null;
   likedBy?: number[];
 }
-export interface ForumComment { id: string; parentId: string | null; author: ForumAuthor; body: string; createdAt: number; hidden: boolean }
+export interface ForumComment { id: string; parentId: string | null; author: ForumAuthor; body: string; createdAt: number; hidden: boolean; likedBy?: number[] }
+export interface ForumCommentView extends Omit<ForumComment, "likedBy"> { likeCount: number; liked: boolean }
 export interface ForumReport { id: string; commentId: string | null; author: ForumAuthor; reason: string; createdAt: number; resolved: boolean }
 export interface ForumAudit { id: string; actor: ForumAuthor; action: string; reason: string; at: number; content?: ForumContent }
 export interface ForumAggregate {
@@ -30,8 +31,8 @@ export interface ForumSummary {
 }
 export interface ForumPollView extends ForumPoll { ballot: string; total: number; counts: Record<string, number>; selected: string | null; open: boolean }
 export interface ForumDetail extends ForumSummary {
-  comments: ForumComment[]; commentTotal: number; commentPage: number; poll: ForumPollView | null;
-  revision?: ForumContent | null; reviewReason?: string; submittedAt?: number; reports?: (ForumReport & { reportedComment?: ForumComment })[]; audit?: ForumAudit[];
+  comments: ForumCommentView[]; commentTotal: number; commentPage: number; poll: ForumPollView | null;
+  revision?: ForumContent | null; reviewReason?: string; submittedAt?: number; reports?: (ForumReport & { reportedComment?: ForumCommentView })[]; audit?: ForumAudit[];
 }
 export interface ForumPage { items: ForumSummary[]; total: number; page: number; pageSize: number }
 export function forumAuthorName(author?: ForumAuthor) { return typeof author?.name === "string" && author.name.trim() ? author.name.trim() : author ? `@${author.login}` : "member"; }

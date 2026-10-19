@@ -260,6 +260,10 @@ fades), recoloured from brand blue to white.
     background: linear-gradient(180deg, hsl(220 20% 98% / 0.94), hsl(220 18% 89% / 0.9));
   }
 
+  .disclosure-summary::marker { content: ""; }
+  .disclosure-summary::-webkit-details-marker { display: none; }
+  details[open] > .disclosure-summary > .disclosure-chevron { transform: rotate(180deg); }
+
   /* MetalFx clears its child's outline, so the focus ring moves to the wrapper. */
   .metal-fx-root:has(:focus-visible) {
     outline: 2px solid hsl(var(--foreground) / 0.55);

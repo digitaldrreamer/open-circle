@@ -8,7 +8,7 @@ import type { MemberCommunityState, ParticipationAction } from "@shared/coordina
 import { PaginatedList } from "@/components/pagination";
 import { MetalButton } from "@/components/metal-button";
 import { Panel, PanelHeader } from "@/components/panel";
-import { AltArrowDownIcon } from "@solar-icons/react/linear";
+import { DisclosureSummary } from "@/components/ui/disclosure";
 
 export function CommunityGuide({ completed = false }: { completed?: boolean }) {
   const instructions = <>
@@ -21,7 +21,7 @@ export function CommunityGuide({ completed = false }: { completed?: boolean }) {
   </>;
   return <section id="start" className="scroll-mt-24">
     {completed ? <details className="group border-b border-foreground/[0.06]">
-      <summary className="flex min-h-11 cursor-pointer list-none items-center gap-2 py-3 text-sm font-medium [&::-webkit-details-marker]:hidden"><AltArrowDownIcon className="size-4 shrink-0 text-t3 transition-transform group-open:rotate-180" aria-hidden />Instructions</summary>
+      <DisclosureSummary className="py-3 text-sm font-medium">Instructions</DisclosureSummary>
       {instructions}
     </details> : <Panel header={<PanelHeader title="Start here" />}>{instructions}</Panel>}
   </section>;

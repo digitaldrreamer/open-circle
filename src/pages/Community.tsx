@@ -74,7 +74,7 @@ function MemberForum({ profile }: { profile: ForumAuthor }) {
     {helpId ? null : active.isPending ? <ContentSkeleton label="Loading community…" detail={!!id} /> : active.isError ? <ForumFailure error={active.error} retry={() => { void active.refetch(); }} /> : id && detail.data ? <ForumThreadView key={id} data={detail.data} profile={profile} busy={mutation.isPending} onAction={act} onPage={(p) => change("page", String(p))} /> : list.data ? <>
       {!helpId && <ForumFeed data={list.data} busy={mutation.isPending} onPage={(p) => change("page", String(p))} onLike={(id, liked) => { void act({ action: "like", id, liked, requestId: crypto.randomUUID() }); }} />}
     </> : null}
-    {questions && <LegacyHelp profileId={profile.id} login={profile.login} id={helpId} />}
+    {helpId && <LegacyHelp profileId={profile.id} login={profile.login} id={helpId} />}
   </div>;
   return id ? view : <CommunitySections section={submissions ? "submissions" : questions ? "questions" : "discussions"} disabled={mutation.isPending} onChange={() => setCreating(false)} actions={questions && !helpId && !active.isError ? <MetalButton type="button" className="min-h-11 w-auto" disabled={mutation.isPending} aria-expanded={creating} onClick={() => setCreating(!creating)}>Ask a question</MetalButton> : undefined}>{view}</CommunitySections>;
 }
