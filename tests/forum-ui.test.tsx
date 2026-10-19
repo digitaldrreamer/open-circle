@@ -31,6 +31,32 @@ beforeEach(() => {
   vi.spyOn(forumApi, "detail").mockImplementation((id, page, isAdmin) => readForum(store, isAdmin ? admin : { profile: state.profile!, admin: false }, id, page));
   vi.spyOn(forumApi, "command").mockImplementation((input, isAdmin) => commandForum(store, isAdmin ? admin : { profile: state.profile!, admin: false }, input));
 });
+it("lets members submit discussions, find them in My submissions and submit revisions without bypassing approval", async () => {
+  const user = userEvent.setup();
+  render(wrap(<Community />, "/community"));
+  await user.click(await screen.findByRole("button", { name: "New discussion" }));
+  await user.type(screen.getByLabelText("Title"), "How I approach my first contribution");
+  await user.type(screen.getByLabelText("Body"), "I start with the project guide and choose a small issue to work on.");
+  expect(screen.queryByRole("button", { name: "Publish" })).toBeNull();
+  expect(screen.queryByLabelText("Attach a poll")).toBeNull();
+  await user.click(screen.getByRole("button", { name: "Submit for approval" }));
+  await screen.findByText("Awaiting approval");
+  expect(await store.readActivity()).toEqual([]);
+  const saved = vi.mocked(forumApi.command).mock.calls[0][0];
+  expect(saved.kind).toBe("discussion");
+  const pending = await readForum(store, alice, saved.requestId);
+  await commandForum(store, admin, command({ action: "review", id: pending.id, version: pending.version, decision: "approve" }));
+  await client.invalidateQueries({ queryKey: ["forum"] });
+  await user.click(await screen.findByRole("button", { name: "Edit" }));
+  await user.clear(screen.getByLabelText("Title"));
+  await user.type(screen.getByLabelText("Title"), "My revised contribution approach");
+  await user.click(screen.getByRole("button", { name: "Submit revision" }));
+  await screen.findByText("Revision awaiting approval");
+  expect((await readForum(store, bob, pending.id)).content.title).toBe("How I approach my first contribution");
+  await user.click(screen.getByRole("link", { name: "Back to discussions" }));
+  await user.click(screen.getByRole("tab", { name: "My submissions" }));
+  expect(await screen.findByRole("heading", { name: "My revised contribution approach" })).toBeTruthy();
+});
 it("likes comments and replies, prevents duplicate submissions and preserves counts after a failed unlike", async () => {
   const post = await commandForum(store, admin, command({ action: "create", kind: "discussion", content, publish: true }));
   const commented = await commandForum(store, bob, command({ action: "comment", id: post.id, body: "A helpful explanation" }));

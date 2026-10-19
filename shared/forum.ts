@@ -1,4 +1,5 @@
 import type { GitHubProfile } from "./community";
+import type { CommunityActivity } from "./community-activity";
 
 export const FORUM_MAX_BYTES = 48_000;
 export const FORUM_PAGE_SIZE = 15;
@@ -15,6 +16,7 @@ export interface ForumThread {
   review: ReviewStatus; reviewReason: string; submittedAt: number; hidden: boolean; locked: boolean; pinned: boolean; resolved: boolean;
   poll: ForumPoll | null;
   likedBy?: number[];
+  activity?: CommunityActivity[];
 }
 export interface ForumComment { id: string; parentId: string | null; author: ForumAuthor; body: string; createdAt: number; hidden: boolean; likedBy?: number[] }
 export interface ForumCommentView extends Omit<ForumComment, "likedBy"> { likeCount: number; liked: boolean }

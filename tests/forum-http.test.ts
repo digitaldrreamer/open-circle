@@ -40,6 +40,22 @@ beforeEach(async () => {
   for (const [token, id, login, prefix] of [[aliceToken, 2, "Alice", ""], [bobToken, 3, "Bob", ""], [adminToken, 1, "Admin", "admin:"]] as const) await sessions.createSession(createHash("sha256").update(`${prefix}${token}`).digest("hex"), { id, login, avatarUrl: "" }, Date.now() + 60000);
 });
 afterEach(() => { vi.unstubAllEnvs(); vi.unstubAllGlobals(); });
+it("requires approval for member discussions even when publication is requested and exposes no private scoring ledger", async () => {
+  const response = await memberApi.POST(req(cmd({ action: "create", kind: "discussion", content, publish: true })));
+  expect(response.status).toBe(200);
+  const pending = await response.json();
+  expect(pending).toMatchObject({ review: "pending", publishedAt: null, author: { id: 2 } });
+  expect(await forum.readActivity()).toEqual([]);
+  expect((await memberApi.GET(req(undefined, bobToken, false, `?id=${pending.id}`))).status).toBe(404);
+  const approved = await adminApi.POST(req(cmd({ action: "review", id: pending.id, version: pending.version, decision: "approve" }), adminToken, true));
+  expect(approved.status).toBe(200);
+  expect(await forum.readActivity()).toMatchObject([{ kind: "post", actorId: 2 }]);
+  const publicResponse = await memberApi.GET(req(undefined, bobToken, false, `?id=${pending.id}`));
+  const text = await publicResponse.text();
+  expect(publicResponse.status).toBe(200);
+  expect(text).not.toContain('"activity"');
+  expect(text).not.toContain('"actorId"');
+});
 it("persists private per-account comment likes through authenticated handlers and rejects unverified changes", async () => {
   const created = await adminApi.POST(req(cmd({ action: "create", kind: "discussion", content, publish: true }), adminToken, true));
   const post = await created.json() as ForumDetail;

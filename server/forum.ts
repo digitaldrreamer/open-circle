@@ -9,6 +9,7 @@ import { getStore } from "./db.js";
 import { clientKey } from "./rate-limit.js";
 import { HttpError } from "./http.js";
 import type { ForumStore } from "./forum-store.js";
+import { retainForumActivity } from "./forum-activity.js";
 
 export interface ForumViewer { profile: ForumAuthor; admin: boolean; participation?: ParticipationState }
 export const FORUM_HEADERS = { "cache-control": "private, no-store", vary: "Cookie" };
@@ -29,7 +30,7 @@ function text(value: unknown, min: number, max: number, label: string) {
 }
 function content(value: unknown): ForumContent {
   const c = record(value);
-  if (!forumCategories.includes(c.category as typeof forumCategories[number])) invalid("Choose a question category.");
+  if (!forumCategories.includes(c.category as typeof forumCategories[number])) invalid("Choose a community category.");
   return { title: text(c.title, 5, 160, "a title"), body: text(c.body, 15, 12_000, "an explanation"), category: c.category as ForumContent["category"] };
 }
 function poll(value: unknown): ForumPoll | null {
@@ -140,31 +141,33 @@ export async function commandForum(store: ForumStore, viewer: ForumViewer, input
       }
       if (command.action === "create") conflict();
     } else if (command.action !== "create") missing();
+    retainForumActivity(data);
     const audit = (action: string, reason: string, snapshot?: ForumContent) => data.audit.push({ id: randomUUID(), actor: viewer.profile, action, reason, at: now, ...(snapshot ? { content: structuredClone(snapshot) } : {}) });
     if (command.action === "create") {
       if (command.kind !== "question" && command.kind !== "discussion") invalid("Choose a discussion or question.");
-      if (command.kind === "discussion" && !viewer.admin) forbidden();
       const c = content(command.content);
       if (command.publish !== undefined && typeof command.publish !== "boolean") invalid("Choose whether to publish the discussion.");
-      if (command.kind === "question" && command.poll) invalid("Only admin discussions can have polls.");
-      const publishing = command.kind === "discussion" && command.publish === true;
-      t = { id, kind: command.kind, author: viewer.profile, createdAt: now, updatedAt: now, version: 1, published: publishing ? c : null, publishedAt: publishing ? now : null, editedAt: null, revision: publishing ? null : c, review: command.kind === "question" ? "pending" : publishing ? "approved" : "draft", reviewReason: "", submittedAt: now, hidden: false, locked: false, pinned: false, resolved: false, poll: command.kind === "discussion" ? poll(command.poll) : null };
+      if ((!viewer.admin || command.kind === "question") && command.poll) invalid("Only admin discussions can have polls.");
+      const publishing = viewer.admin && command.kind === "discussion" && command.publish === true;
+      const pending = !viewer.admin || command.kind === "question";
+      t = { id, kind: command.kind, author: viewer.profile, createdAt: now, updatedAt: now, version: 1, published: publishing ? c : null, publishedAt: publishing ? now : null, editedAt: null, revision: publishing ? null : c, review: pending ? "pending" : publishing ? "approved" : "draft", reviewReason: "", submittedAt: now, hidden: false, locked: false, pinned: false, resolved: false, poll: viewer.admin && command.kind === "discussion" ? poll(command.poll) : null };
       data.thread = t;
-      audit(publishing ? "publish" : command.kind === "question" ? "submit" : "draft", "", c);
+      audit(publishing ? "publish" : pending ? "submit" : "draft", "", c);
     } else {
       if (!t) missing();
       if (["edit", "review", "moderate"].includes(command.action) && (!Number.isSafeInteger(command.version) || command.version !== t.version)) conflict();
       if (command.action === "edit") {
-        if (t.kind === "discussion" ? !viewer.admin : t.author.id !== viewer.profile.id && !viewer.admin) forbidden();
+        if (t.author.id !== viewer.profile.id && !viewer.admin) forbidden();
+        if ((!viewer.admin || t.kind === "question") && command.poll) invalid("Only admin discussions can have polls.");
         const c = content(command.content);
-        if (t.kind === "discussion") {
+        if (t.kind === "discussion" && viewer.admin) {
           const nextPoll = poll(command.poll);
           if (Object.keys(data.votes).length && (!nextPoll || !t.poll || pollBallot(nextPoll) !== pollBallot(t.poll))) throw new HttpError(409, "poll_started", "Poll settings cannot change after the first vote.");
           t.poll = nextPoll;
           if (command.publish === true || t.published) { if (t.published) t.editedAt = now; t.published = c; t.publishedAt ??= now; t.revision = null; t.review = "approved"; }
           else { t.revision = c; t.review = "draft"; }
         } else { t.revision = c; t.review = "pending"; t.reviewReason = ""; t.submittedAt = now; }
-        audit(t.kind === "question" ? "submit-revision" : t.published ? "publish-edit" : "edit-draft", "", c);
+        audit(t.kind === "question" || !viewer.admin ? "submit-revision" : t.published ? "publish-edit" : "edit-draft", "", c);
       } else if (command.action === "comment") {
         if (!t.published || t.hidden || t.locked) throw new HttpError(409, "forum_locked", "Comments aren't open on this post.");
         const parent = command.parentId ? data.comments.find((c) => c.id === command.parentId && !c.hidden) : null;
@@ -226,6 +229,7 @@ export async function commandForum(store: ForumStore, viewer: ForumViewer, input
       }
       if (["edit", "review", "moderate"].includes(command.action)) { t.version++; t.updatedAt = now; }
     }
+    retainForumActivity(data, now);
     data.requests[requestKey] = fingerprint;
     return detail(data, viewer, 1, now);
   });

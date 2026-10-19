@@ -19,5 +19,6 @@ it("persists committed threads, comments, votes, requests and private revisions 
     await commandForum(first, alice, command({ action: "like", id: post.id, commentId: commented.comments[0].id, liked: true }));
     await commandForum(first, alice, command({ action: "like", id: post.id, liked: true }));
     expect(await readForum(new LocalForumStore(file), alice, post.id)).toMatchObject({ commentCount: 1, comments: [{ likeCount: 1, liked: true }], likeCount: 1, liked: true, poll: { total: 1, selected: "option_2" } });
+    expect(await new LocalForumStore(file).readActivity()).toEqual(await first.readActivity());
   } finally { rmSync(directory, { recursive: true, force: true }); }
 });

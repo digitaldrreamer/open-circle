@@ -22,6 +22,7 @@ export type LeaderboardEntry = {
   helpfulContributions?: number;
   starHelps?: number;
   helpedMembers?: number;
+  communityPoints?: number;
   href: string;
   /** The member's GitHub avatar; DiceBear stands in when it's missing. */
   avatarUrl?: string;
@@ -91,6 +92,7 @@ function PodiumSlot({
                 <span className="sm:hidden" aria-hidden="true">{formatCount(entry.points)} {unit}</span>
                 <span className="hidden sm:inline" aria-hidden="true">{formatFull(entry.points)} {unit}</span>
               </span>
+              {entry.communityPoints !== undefined && <span className="mt-1 max-w-full truncate text-[10px] text-t3 tabular sm:text-xs">{formatCount(entry.communityPoints)} activity pts</span>}
               {entry.helpfulContributions !== undefined && <span className="mt-1 max-w-full truncate text-[10px] text-t3 tabular sm:text-xs" title={formatHelpDetail(entry, entry.period)}>
                 {formatCount(entry.helpfulContributions + (entry.starHelps ?? 0))} helps · {formatCount(entry.starHelps ?? 0)} stars given
               </span>}

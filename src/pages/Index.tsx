@@ -49,6 +49,7 @@ function toEntry(m: PublicMember, period: RankingPeriod): LeaderboardEntry {
     helpfulContributions: m.helpfulContributions ?? 0,
     starHelps: m.starHelps ?? 0,
     helpedMembers: m.helpedMembers ?? 0,
+    communityPoints: m.communityPoints,
     href: githubUrl(m.login),
     avatarUrl: m.avatarUrl || undefined,
     seed: id,
@@ -390,6 +391,7 @@ const Index = () => {
         onOpenChange={setHowOpen}
         weights={board?.weights}
         helpersDelayed={board?.helpersDelayed}
+        communityDelayed={board?.communityDelayed}
       />
     </div>
   );

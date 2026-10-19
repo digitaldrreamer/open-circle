@@ -57,7 +57,7 @@ function MemberForum({ profile }: { profile: ForumAuthor }) {
     try {
       const result = await mutation.mutateAsync(command);
       if (!alive.current) return false;
-      await client.invalidateQueries({ queryKey: ["forum", profile.id] });
+      await Promise.all([client.invalidateQueries({ queryKey: ["forum", profile.id] }), client.invalidateQueries({ queryKey: ["board"] })]);
       if (command.action === "create") { setCreating(false); navigate(`/community/${result.id}`); }
       if (command.action === "comment") { const next = new URLSearchParams(params); next.set("page", String(Math.max(1, Math.ceil(result.commentTotal / FORUM_PAGE_SIZE)))); setParams(next); }
       if (command.action === "report") toast.success("Your report is with the admins.");
@@ -68,7 +68,7 @@ function MemberForum({ profile }: { profile: ForumAuthor }) {
   const change = (key: string, value: string) => { const next = new URLSearchParams(params); if (value) next.set(key, value); else next.delete(key); if (key !== "page") next.delete("page"); setParams(next, { replace: key === "search" }); };
   const view = <div className="space-y-5">
     {!id && !helpId && !active.isError && <>
-      {creating && <ForumEditor key={profile.id} busy={mutation.isPending} onSave={act} onCancel={() => setCreating(false)} />}
+      {creating && <ForumEditor key={`${profile.id}:${questions}`} kind={questions ? "question" : "discussion"} busy={mutation.isPending} onSave={act} onCancel={() => setCreating(false)} />}
       <ForumFilters params={params} onChange={change} questions={questions} />
     </>}
     {helpId ? null : active.isPending ? <ContentSkeleton label="Loading community…" detail={!!id} /> : active.isError ? <ForumFailure error={active.error} retry={() => { void active.refetch(); }} /> : id && detail.data ? <ForumThreadView key={id} data={detail.data} profile={profile} busy={mutation.isPending} onAction={act} onPage={(p) => change("page", String(p))} /> : list.data ? <>
@@ -76,5 +76,5 @@ function MemberForum({ profile }: { profile: ForumAuthor }) {
     </> : null}
     {helpId && <LegacyHelp profileId={profile.id} login={profile.login} id={helpId} />}
   </div>;
-  return id ? view : <CommunitySections section={submissions ? "submissions" : questions ? "questions" : "discussions"} disabled={mutation.isPending} onChange={() => setCreating(false)} actions={questions && !helpId && !active.isError ? <MetalButton type="button" className="min-h-11 w-auto" disabled={mutation.isPending} aria-expanded={creating} onClick={() => setCreating(!creating)}>Ask a question</MetalButton> : undefined}>{view}</CommunitySections>;
+  return id ? view : <CommunitySections section={submissions ? "submissions" : questions ? "questions" : "discussions"} disabled={mutation.isPending} onChange={() => setCreating(false)} actions={!helpId && !active.isError ? <MetalButton type="button" className="min-h-11 w-auto" disabled={mutation.isPending} aria-expanded={creating} onClick={() => setCreating(!creating)}>{questions ? "Ask a question" : "New discussion"}</MetalButton> : undefined}>{view}</CommunitySections>;
 }

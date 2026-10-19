@@ -8,6 +8,7 @@ import type {
 } from "../shared/types.js";
 
 export interface MemberRecord {
+  githubId?: number;
   /** Lowercased GitHub login; the primary key. */
   login: string;
   /** GitHub's casing, for display. */
@@ -70,6 +71,7 @@ export interface Store {
 }
 
 const NUMERIC = [
+  "githubId",
   "stars",
   "followers",
   "repos",

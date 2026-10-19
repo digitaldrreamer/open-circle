@@ -30,6 +30,7 @@ describe.skipIf(!url)("PostgreSQL forum contract", () => {
     await expect(store.transact(post.id, true, (data) => { data.thread!.hidden = true; throw new Error("Abort save"); })).rejects.toThrow("Abort save");
     const another = new PostgresForumStore(pool);
     expect(await readForum(another, alice, post.id)).toMatchObject({ hidden: false, comments: [{ likeCount: 1, liked: true }], poll: { total: 1, selected: "option_1" } });
+    expect(await another.readActivity()).toEqual(await store.readActivity());
   });
   it("serializes closure against votes and cannot commit a vote after closure", async () => {
     const post = await commandForum(store, admin, command({ action: "create", kind: "discussion", content, publish: true, poll }));

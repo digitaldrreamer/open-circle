@@ -13,6 +13,25 @@ export const command = (patch: Omit<ForumCommand, "requestId">): ForumCommand =>
 export const poll = { question: "What should our next lesson cover?", options: [{ id: "option_1", label: "Git" }, { id: "option_2", label: "Testing" }], closesAt: null, closed: false };
 
 export function forumContract(create: () => ForumStore) {
+  it("moderates member discussions and revisions, keeps pending content private and credits publication only once", async () => {
+    const store = create();
+    const pending = await commandForum(store, alice, command({ action: "create", kind: "discussion", content, publish: true }));
+    expect(pending).toMatchObject({ kind: "discussion", review: "pending", publishedAt: null });
+    expect(await store.readActivity()).toEqual([]);
+    await expect(readForum(store, bob, pending.id)).rejects.toMatchObject({ status: 404 });
+    await expect(commandForum(store, bob, command({ action: "edit", id: pending.id, version: pending.version, content }))).rejects.toMatchObject({ status: 404 });
+    const approved = await commandForum(store, admin, command({ action: "review", id: pending.id, version: pending.version, decision: "approve" }));
+    expect((await store.readActivity()).filter((event) => event.actorId === alice.profile.id)).toMatchObject([{ kind: "post", at: approved.publishedAt }]);
+    const revision = await commandForum(store, alice, command({ action: "edit", id: approved.id, version: approved.version, content: { ...content, title: "My revised discussion title" } }));
+    expect(revision.review).toBe("pending");
+    expect((await readForum(store, bob, approved.id)).content.title).toBe(content.title);
+    await commandForum(store, admin, command({ action: "review", id: pending.id, version: revision.version, decision: "approve" }));
+    expect((await store.readActivity()).filter((event) => event.actorId === alice.profile.id)).toHaveLength(1);
+    const question = await commandForum(store, alice, command({ action: "create", kind: "question", content }));
+    const mine = await listForum(store, alice, { ...filter, mine: true });
+    expect(new Set(mine.items.map((item) => item.id))).toEqual(new Set([approved.id, question.id]));
+    expect((await listForum(store, bob, { ...filter, mine: true })).items).toEqual([]);
+  });
   it("likes comments and replies once per account without changing post likes, votes or moderation versions", async () => {
     const store = create();
     const post = await commandForum(store, admin, command({ action: "create", kind: "discussion", content, publish: true, poll }));
@@ -249,7 +268,7 @@ export function forumContract(create: () => ForumStore) {
   });
   it("rejects impersonation, stale review actions, forbidden edits and scheduled poll expiry", async () => {
     const store = create();
-    await expect(commandForum(store, bob, command({ action: "create", kind: "discussion", content }))).rejects.toMatchObject({ status: 403 });
+    await expect(commandForum(store, bob, command({ action: "create", kind: "discussion", content, poll }))).rejects.toMatchObject({ status: 400 });
     const post = await commandForum(store, admin, command({ action: "create", kind: "discussion", content, publish: true, poll: { ...poll, closesAt: Date.now() - 1 } }));
     await expect(commandForum(store, bob, command({ action: "vote", id: post.id, ballot: post.poll!.ballot, optionId: "option_1" }))).rejects.toMatchObject({ code: "poll_closed" });
     await expect(commandForum(store, bob, command({ action: "edit", id: post.id, version: post.version, content }))).rejects.toMatchObject({ status: 403 });
