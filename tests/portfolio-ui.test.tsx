@@ -57,6 +57,75 @@ it("keeps contacts private until switched on and makes hiring a deliberate choic
   expect(screen.queryByRole("link", { name: "Hire me" })).toBeNull(); expect(screen.queryByRole("link", { name: "Email" })).toBeNull();
 });
 
+it("saves skills separated by commas, semicolons or pasted lines without treating the list as one skill", async () => {
+  const user = userEvent.setup();
+  const skills = ["Continuous integration and deployment", "React", "Product design", "C/C++"];
+  const fetcher = vi.fn(async (_url: unknown, init?: RequestInit) => new Response(JSON.stringify({ ...initial(), draft: JSON.parse(String(init?.body)).content, version: 1, updatedAt: Date.now() })));
+  vi.stubGlobal("fetch", fetcher); mount();
+  const input = screen.getByRole("textbox", { name: "Skills" });
+  await user.click(input);
+  await user.paste(`${skills[0]}, React; Product design\nC/C++`);
+  await user.click(screen.getByRole("button", { name: "Save draft" }));
+  await waitFor(() => expect(fetcher).toHaveBeenCalledOnce());
+  expect(JSON.parse(String(fetcher.mock.calls[0][1]?.body))).toMatchObject({ action: "save", content: { skills } });
+  await waitFor(() => expect((screen.getByRole("textbox", { name: "Skills" }) as HTMLTextAreaElement).value).toBe(skills.join(", ")));
+});
+
+it("keeps all twelve maximum-length skills without truncating the list", async () => {
+  const user = userEvent.setup();
+  const skills = Array.from({ length: 12 }, (_, index) => `${index}`.padEnd(80, "x"));
+  const fetcher = vi.fn(async (_url: unknown, init?: RequestInit) => new Response(JSON.stringify({ ...initial(), draft: JSON.parse(String(init?.body)).content, version: 1, updatedAt: Date.now() })));
+  vi.stubGlobal("fetch", fetcher); mount();
+  await user.click(screen.getByRole("textbox", { name: "Skills" }));
+  await user.paste(skills.join(", "));
+  await user.click(screen.getByRole("button", { name: "Save draft" }));
+  await waitFor(() => expect(fetcher).toHaveBeenCalledOnce());
+  expect(JSON.parse(String(fetcher.mock.calls[0][1]?.body)).content.skills).toEqual(skills);
+});
+
+it.each(["Save draft", "Publish"])("returns to Skills after %s fails and lets the member correct it", async (action) => {
+  const user = userEvent.setup();
+  const fetcher = vi.fn(async (_url: unknown, init?: RequestInit) => new Response(JSON.stringify({ ...initial(), draft: JSON.parse(String(init?.body)).content, version: 1, updatedAt: Date.now() })));
+  vi.stubGlobal("fetch", fetcher); mount();
+  await user.type(screen.getByRole("textbox", { name: "Skills" }), "x".repeat(81));
+  await user.click(screen.getByRole("tab", { name: "Style" }));
+  await user.click(screen.getByRole("button", { name: action }));
+  expect(fetcher).not.toHaveBeenCalled();
+  expect(screen.queryByRole("dialog")).toBeNull();
+  const input = screen.getByRole("textbox", { name: "Skills" }) as HTMLTextAreaElement;
+  expect(input.value).toBe("x".repeat(81));
+  expect(input.getAttribute("aria-invalid")).toBe("true");
+  expect(document.activeElement).toBe(input);
+  expect(screen.getByRole("alert").textContent).toContain("Separate different skills");
+  await user.clear(input); await user.type(input, "Continuous integration and deployment, React");
+  expect(input.getAttribute("aria-invalid")).toBe("false");
+  await user.click(screen.getByRole("button", { name: action }));
+  if (action === "Publish") await user.click(screen.getByRole("button", { name: "Publish portfolio" }));
+  await waitFor(() => expect(fetcher).toHaveBeenCalledOnce());
+  expect(JSON.parse(String(fetcher.mock.calls[0][1]?.body))).toMatchObject({ action: action === "Publish" ? "publish" : "save", content: { skills: ["Continuous integration and deployment", "React"] } });
+});
+
+it.each(["Save draft", "Publish"])("returns to Skills for a server validation error after %s and preserves the draft for retry", async (action) => {
+  const user = userEvent.setup();
+  const fetcher = vi.fn().mockResolvedValueOnce(new Response(JSON.stringify({ error: { code: "portfolio_invalid", field: "skills", message: "Check your skills and try again." } }), { status: 400 }));
+  vi.stubGlobal("fetch", fetcher); mount();
+  await user.type(screen.getByRole("textbox", { name: "Skills" }), "React, TypeScript");
+  await user.click(screen.getByRole("tab", { name: "Style" }));
+  await user.click(screen.getByRole("button", { name: action }));
+  if (action === "Publish") await user.click(screen.getByRole("button", { name: "Publish portfolio" }));
+  const input = await screen.findByRole("textbox", { name: "Skills" }) as HTMLTextAreaElement;
+  expect(input.value).toBe("React, TypeScript");
+  expect(input.getAttribute("aria-invalid")).toBe("true");
+  expect(screen.queryByRole("dialog")).toBeNull();
+  expect(document.activeElement).toBe(input);
+  expect(screen.getByRole("alert").textContent).toBe("Check your skills and try again.");
+  await user.type(input, ", Product design");
+  fetcher.mockResolvedValueOnce(new Response(JSON.stringify({ ...initial(), draft: { ...initial().draft, skills: ["React", "TypeScript", "Product design"] }, version: 1, updatedAt: Date.now() })));
+  await user.click(screen.getByRole("button", { name: "Save draft" }));
+  await waitFor(() => expect(fetcher).toHaveBeenCalledTimes(2));
+  expect(JSON.parse(String(fetcher.mock.calls[1][1]?.body))).toMatchObject({ action: "save", version: 0, content: { skills: ["React", "TypeScript", "Product design"] } });
+});
+
 it("shows only selected repositories, preserves their order and confirms publication", async () => {
   const user = userEvent.setup();
   const state = initial();

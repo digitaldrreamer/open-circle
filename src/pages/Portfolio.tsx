@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
 import { useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { MetalText } from "@/components/metal-text";
@@ -22,8 +22,8 @@ import { useTheme } from "@/hooks/use-theme";
 import { usePageMeta } from "@/hooks/use-page-meta";
 import { ApiError } from "@/lib/api";
 import { portfolioApi } from "@/lib/portfolio-api";
-import { CONTACT_KINDS, CONTACT_LABELS, PORTFOLIO_ACCENTS, defaultPortfolio, portfolioHostname, type ContactKind, type PortfolioContent, type PortfolioEditorState, type PublicPortfolio } from "@shared/portfolio";
-import { parsePortfolio } from "@shared/portfolio-validation";
+import { CONTACT_KINDS, CONTACT_LABELS, MAX_PORTFOLIO_SKILLS, MAX_PORTFOLIO_SKILL_LENGTH, PORTFOLIO_ACCENTS, defaultPortfolio, portfolioHostname, type ContactKind, type PortfolioContent, type PortfolioEditorState, type PublicPortfolio } from "@shared/portfolio";
+import { parsePortfolio, PortfolioValidationError } from "@shared/portfolio-validation";
 import { BRAND_NAME } from "@shared/brand";
 import "@/components/portfolio/studio.css";
 
@@ -69,9 +69,20 @@ export function PortfolioEditor({ initial }: { initial: PortfolioEditorState }) 
   const [importRepo, setImportRepo] = useState("");
   const [dialog, setDialog] = useState<"publish" | "unpublish" | "leave" | "import" | null>(null);
   const [errorField, setErrorField] = useState<string | null>(null);
+  const skillsInput = useRef<HTMLTextAreaElement>(null);
   const dirty = JSON.stringify(content) !== savedContent;
   const queryKey = ["portfolio-editor", initial.profile.id];
-  const error = (failure: Error) => { setErrorField(failure instanceof ApiError ? failure.field ?? null : null); toast.error(failure.message, { id: "portfolio-error" }); };
+  const error = (failure: Error) => {
+    const field = failure instanceof ApiError || failure instanceof PortfolioValidationError ? failure.field ?? null : null;
+    if (field) {
+      const section = ["slug", "name", "headline", "bio", "location", "skills"].includes(field) ? "profile" : ["email", "website", "whatsapp", "linkedin", "contacts", "primaryContact"].includes(field) ? "contact" : field.startsWith("project") || field === "projects" ? "projects" : field === "README" ? "readme" : "style";
+      setTab(section);
+      setDialog(null);
+    }
+    setErrorField(field);
+    if (field === "skills") skillsInput.current?.focus();
+    toast.error(failure.message, { id: "portfolio-error" });
+  };
   const save = useMutation({ mutationFn: (action: "save" | "publish" | "unpublish") => portfolioApi.save(action, content, saved.version), onSuccess: (next, action) => {
     setSaved(next);
     if (action !== "unpublish") { setContent(next.draft); setSkillsText(next.draft.skills.join(", ")); setSavedContent(JSON.stringify(next.draft)); }
@@ -83,6 +94,10 @@ export function PortfolioEditor({ initial }: { initial: PortfolioEditorState }) 
   const sync = useMutation({ mutationFn: portfolioApi.profile, onSuccess: (details) => { setContent((current) => ({ ...current, ...details })); toast.success("Name, bio and location imported from GitHub."); }, onError: error });
   const readme = useMutation({ mutationFn: portfolioApi.readme, onSuccess: ({ readme: imported }) => { setContent((current) => ({ ...current, readme: imported })); setDialog(null); setReadmePreview(false); toast.success("README imported. You can edit it before publishing."); }, onError: error });
   const busy = save.isPending || upload.isPending || sync.isPending || readme.isPending;
+  const focusSkills = useCallback((node: HTMLTextAreaElement | null) => {
+    skillsInput.current = node;
+    if (errorField === "skills" && !busy) node?.focus();
+  }, [errorField, busy]);
   const change = <K extends keyof PortfolioContent>(key: K, value: PortfolioContent[K]) => { setContent((current) => ({ ...current, [key]: value })); if (errorField === key) setErrorField(null); };
   const uploadImage = async (file: File) => (await upload.mutateAsync(file)).url;
   const preview: PublicPortfolio = { ...content, githubLogin: initial.profile.login, avatarUrl: `https://avatars.githubusercontent.com/u/${initial.profile.id}?s=240`, publishedAt: saved.publishedAt ?? Date.now() };
@@ -96,11 +111,7 @@ export function PortfolioEditor({ initial }: { initial: PortfolioEditorState }) 
   };
   const validate = () => {
     try { parsePortfolio(content, saved.version > 0 ? saved.draft.slug : undefined); setErrorField(null); return true; }
-    catch (failure) {
-      const field = (failure as { field?: string }).field ?? "";
-      const section = ["slug", "name", "headline", "bio", "location", "skills"].includes(field) ? "profile" : ["email", "website", "whatsapp", "linkedin", "contacts", "primaryContact"].includes(field) ? "contact" : field.startsWith("project") || field === "projects" ? "projects" : field === "README" ? "readme" : "style";
-      setTab(section); setErrorField(field); toast.error((failure as Error).message, { id: "portfolio-error" }); return false;
-    }
+    catch (failure) { error(failure as Error); return false; }
   };
   useEffect(() => {
     if (initial.version <= saved.version || dirty || busy) return;
@@ -134,7 +145,7 @@ export function PortfolioEditor({ initial }: { initial: PortfolioEditorState }) 
         <EditorField label="Headline" htmlFor="portfolio-headline" hint="What you do, in a few words."><input id="portfolio-headline" className="field" value={content.headline} onChange={(event) => change("headline", event.target.value)} maxLength={120} placeholder="Frontend developer & open-source contributor" /></EditorField>
         <EditorField label="Bio" htmlFor="portfolio-bio" hint={`${content.bio.length}/500 characters`}><textarea id="portfolio-bio" rows={4} className="field studio-textarea" value={content.bio} onChange={(event) => change("bio", event.target.value)} maxLength={500} placeholder="A little about you and the work you care about." /></EditorField>
         <EditorField label="Location" htmlFor="portfolio-location"><input id="portfolio-location" className="field" value={content.location} onChange={(event) => change("location", event.target.value)} maxLength={80} placeholder="City, country or remote" autoComplete="address-level2" /></EditorField>
-        <EditorField label="Skills" htmlFor="portfolio-skills" hint="Separate skills with commas. Up to 12, with 32 characters each."><input id="portfolio-skills" className="field" value={skillsText} maxLength={430} onBlur={() => setSkillsText(content.skills.join(", "))} onChange={(event) => { setSkillsText(event.target.value); const parts = event.target.value.split(",").map((skill) => skill.trim()).filter(Boolean); change("skills", parts); }} placeholder="TypeScript, React, Product design" /></EditorField>
+        <EditorField label="Skills" htmlFor="portfolio-skills" hint={`Separate skills with commas, semicolons or new lines. Up to ${MAX_PORTFOLIO_SKILLS} skills, with ${MAX_PORTFOLIO_SKILL_LENGTH} characters each.`}><textarea ref={focusSkills} id="portfolio-skills" className="field studio-textarea" rows={2} value={skillsText} aria-invalid={errorField === "skills"} aria-describedby="portfolio-skills-hint" onBlur={() => setSkillsText(content.skills.join(", "))} onChange={(event) => { setSkillsText(event.target.value); const parts = event.target.value.split(/[,;\r\n]+/).map((skill) => skill.trim()).filter(Boolean); change("skills", parts); }} placeholder="TypeScript, React, Product design" /></EditorField>
       </TabsContent>
       <TabsContent value="projects" className="studio-section"><div className="studio-section-title"><h2>The work you're proud of</h2><p>Pick up to six repositories. Move your favorite to the top, and give each project its own story.</p></div><RepositoryPicker ownerId={initial.profile.id} selected={content.projects} onSelect={(repository) => { if (content.projects.length < 6 && !content.projects.some((project) => project.repository.id === repository.id)) change("projects", [...content.projects, { repository, title: "", summary: "", imageUrl: "" }]); }} />
         {content.projects.length === 0 && <div className="rounded-2xl bg-foreground/[.025] px-6 py-9 text-center"><p className="text-sm text-t2">Your projects belong here.</p><p className="studio-help mt-2">Start with one repository. You can add more later.</p></div>}

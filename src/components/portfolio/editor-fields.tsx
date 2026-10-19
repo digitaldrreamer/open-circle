@@ -11,7 +11,7 @@ import { portfolioApi } from "@/lib/portfolio-api";
 import { MAX_IMAGE_BYTES, type PortfolioProject, type PortfolioRepository } from "@shared/portfolio";
 
 export function EditorField({ label, hint, children, htmlFor }: { label: string; hint?: string; children: ReactNode; htmlFor: string }) {
-  return <div className="studio-field"><label htmlFor={htmlFor}>{label}</label>{children}{hint && <p>{hint}</p>}</div>;
+  return <div className="studio-field"><label htmlFor={htmlFor}>{label}</label>{children}{hint && <p id={`${htmlFor}-hint`}>{hint}</p>}</div>;
 }
 
 export function ImageField({ label, value, onChange, upload, uploadsAvailable }: { label: string; value: string; onChange: (value: string) => void; upload: (file: File) => Promise<string>; uploadsAvailable: boolean }) {
