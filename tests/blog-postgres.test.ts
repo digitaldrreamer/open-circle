@@ -58,4 +58,15 @@ describe.skipIf(!url)("PostgreSQL blog contract", () => {
     expect(results.every((result) => result.status === "fulfilled")).toBe(true);
     expect((await pool.query("SELECT count(*)::int AS n FROM opencircle_blog_posts")).rows[0].n).toBe(1);
   });
+
+  it("saves and approves without borrowing a second transaction connection", async () => {
+    const single = new Pool({ connectionString: url, max: 1, connectionTimeoutMillis: 250 });
+    try {
+      const isolated = new PostgresBlogStore(single);
+      const first = await publish(isolated);
+      const second = await publish(isolated, bob);
+      expect(second.slug).toBe(`${first.slug}-2`);
+      expect((await readBlog(isolated, first.slug!)).title).toBe(content().title);
+    } finally { await single.end(); }
+  });
 });

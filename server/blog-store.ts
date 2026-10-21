@@ -7,6 +7,11 @@ import { HttpError } from "./http.js";
 import { createPostgresPool } from "./postgres.js";
 
 export interface BlogListing { posts: BlogPost[]; total: number }
+export interface BlogTransaction {
+  post: BlogPost | null;
+  listAuthor(authorId: number): Promise<BlogPost[]>;
+  slugTaken(slug: string, id: string): Promise<boolean>;
+}
 export interface BlogStore {
   listPublished(page: number, topic: string): Promise<BlogListing>;
   readPublished(slug: string): Promise<BlogPost | null>;
@@ -17,7 +22,7 @@ export interface BlogStore {
   listQueue(queue: BlogQueue, page: number): Promise<BlogListing>;
   slugTaken(slug: string, id: string): Promise<boolean>;
   /** Serialises writes per post; set `box.post` to change it. */
-  transact<T>(id: string, write: boolean, run: (box: { post: BlogPost | null }) => Promise<T> | T): Promise<T>;
+  transact<T>(id: string, write: boolean, run: (box: BlogTransaction) => Promise<T> | T, authorId?: number): Promise<T>;
 }
 
 export const visible = (post: BlogPost) => !!post.published && !!post.slug && !post.hidden;
@@ -65,9 +70,9 @@ export class LocalBlogStore implements BlogStore {
   async slugTaken(slug: string, id: string) {
     return Object.values(this.records).some((post) => post.slug === slug && post.id !== id);
   }
-  async transact<T>(id: string, write: boolean, run: (box: { post: BlogPost | null }) => Promise<T> | T): Promise<T> {
+  async transact<T>(id: string, write: boolean, run: (box: BlogTransaction) => Promise<T> | T): Promise<T> {
     const result = this.tail.then(async () => {
-      const box = { post: structuredClone(this.records[id] ?? null) };
+      const box = { post: structuredClone(this.records[id] ?? null), listAuthor: this.listAuthor.bind(this), slugTaken: this.slugTaken.bind(this) };
       const value = await run(box);
       if (write && box.post) {
         if (box.post.slug && await this.slugTaken(box.post.slug, id)) throw slugConflict();
@@ -153,14 +158,19 @@ export class PostgresBlogStore implements BlogStore {
     try { return (await this.pool.query("SELECT 1 FROM opencircle_blog_posts WHERE slug = $1 AND id <> $2", [slug, id])).rowCount !== 0; }
     catch (error) { storageError(error); }
   }
-  async transact<T>(id: string, write: boolean, run: (box: { post: BlogPost | null }) => Promise<T> | T): Promise<T> {
+  async transact<T>(id: string, write: boolean, run: (box: BlogTransaction) => Promise<T> | T, authorId?: number): Promise<T> {
     const client = await this.pool.connect().catch(storageError);
     try {
       await client.query(write ? "BEGIN" : "BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY");
       await client.query("SET LOCAL lock_timeout = '5s'");
+      if (write && authorId !== undefined) await client.query("SELECT pg_advisory_xact_lock(hashtextextended($1, 41198))", [String(authorId)]);
       if (write) await client.query("SELECT pg_advisory_xact_lock(hashtextextended($1, 41197))", [id]);
       const { rows } = await client.query<{ document: BlogPost }>(`SELECT document FROM opencircle_blog_posts WHERE id = $1${write ? " FOR UPDATE" : ""}`, [id]);
-      const box = { post: rows[0]?.document ?? null };
+      const box: BlogTransaction = {
+        post: rows[0]?.document ?? null,
+        listAuthor: async (owner) => (await client.query<{ document: BlogPost }>("SELECT document FROM opencircle_blog_posts WHERE author_id = $1 ORDER BY updated_at DESC, id", [owner])).rows.map((row) => row.document),
+        slugTaken: async (slug, postId) => (await client.query("SELECT 1 FROM opencircle_blog_posts WHERE slug = $1 AND id <> $2", [slug, postId])).rowCount !== 0,
+      };
       const result = await run(box);
       const post = box.post;
       if (write && post) {

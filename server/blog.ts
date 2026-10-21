@@ -132,7 +132,7 @@ export async function queueBlog(store: BlogStore, url: URL): Promise<BlogDraftPa
   return { items: data.posts.map((post) => draft(post, false)), total: data.total, page: number, pageSize: BLOG_PAGE_SIZE };
 }
 
-async function uniqueSlug(store: BlogStore, title: string, id: string): Promise<string> {
+async function uniqueSlug(store: Pick<BlogStore, "slugTaken">, title: string, id: string): Promise<string> {
   const base = blogSlug(title) ?? `post-${id.slice(0, 8)}`;
   for (let attempt = 1; attempt <= 20; attempt++) {
     const slug = attempt === 1 ? base : `${base.slice(0, 72)}-${attempt}`;
@@ -178,7 +178,7 @@ export async function commandBlog(store: BlogStore, viewer: BlogViewer, input: u
     }
     const audit = (entry: string, note = "") => post!.audit.push({ id: randomUUID(), actor: viewer.profile, action: entry, reason: note, at: now });
     if (content) {
-      const others = (await store.listAuthor(viewer.profile.id)).filter((other) => other.id !== id);
+      const others = (await box.listAuthor(viewer.profile.id)).filter((other) => other.id !== id);
       if (!post) {
         if (version !== 0) missing();
         if (others.filter((other) => !other.published).length >= BLOG_DRAFT_LIMIT) throw new HttpError(409, "blog_draft_limit", `You can keep up to ${BLOG_DRAFT_LIMIT} unpublished posts. Finish or wait on one before starting another.`);
@@ -199,7 +199,7 @@ export async function commandBlog(store: BlogStore, viewer: BlogViewer, input: u
         const note = reason(body.reason, decision === "approve" ? 0 : 5, decision === "approve" ? "a note" : "a reason for the author");
         audit(`review-${decision}`, note);
         if (decision === "approve") {
-          post.slug ??= await uniqueSlug(store, post.revision.title, id);
+          post.slug ??= await uniqueSlug(box, post.revision.title, id);
           if (post.published) post.editedAt = now;
           post.published = post.revision;
           post.publishedAt ??= now;
@@ -224,5 +224,5 @@ export async function commandBlog(store: BlogStore, viewer: BlogViewer, input: u
     post.requests = Object.fromEntries([...Object.entries(post.requests), [requestKey, fingerprint]].slice(-50));
     box.post = post;
     return draft(post, viewer.admin);
-  });
+  }, content ? viewer.profile.id : undefined);
 }

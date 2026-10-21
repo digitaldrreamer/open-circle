@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { expect, it } from "vitest";
-import { BLOG_PENDING_LIMIT, type BlogContentInput, type BlogDraft } from "../../shared/blog";
+import { BLOG_DRAFT_LIMIT, BLOG_PENDING_LIMIT, type BlogContentInput, type BlogDraft } from "../../shared/blog";
 import { commandBlog, listBlog, myBlog, portfolioPosts, queueBlog, readBlog, readDraft, type BlogViewer } from "../../server/blog";
 import type { BlogStore } from "../../server/blog-store";
 
@@ -129,6 +129,23 @@ export function blogContract(store: () => BlogStore) {
     for (let index = 0; index < BLOG_PENDING_LIMIT; index++) await submit(store());
     await expect(submit(store())).rejects.toMatchObject({ status: 409, code: "blog_pending_limit" });
     await expect(submit(store(), bob)).resolves.toMatchObject({ review: "pending" });
+  });
+
+  it("enforces the pending limit across simultaneous submissions for different posts", async () => {
+    for (let index = 0; index < BLOG_PENDING_LIMIT - 1; index++) await submit(store());
+    const results = await Promise.allSettled([submit(store()), submit(store())]);
+    expect(results.filter((result) => result.status === "fulfilled")).toHaveLength(1);
+    expect(results.filter((result) => result.status === "rejected").map((result) => result.reason.code)).toEqual(["blog_pending_limit"]);
+    expect((await myBlog(store(), alice)).items.filter((post) => post.review === "pending")).toHaveLength(BLOG_PENDING_LIMIT);
+  });
+
+  it("enforces the draft limit across simultaneous saves for different posts", async () => {
+    const save = () => commandBlog(store(), alice, command({ action: "save", id: randomUUID(), version: 0, content: content() }));
+    for (let index = 0; index < BLOG_DRAFT_LIMIT - 1; index++) await save();
+    const results = await Promise.allSettled([save(), save()]);
+    expect(results.filter((result) => result.status === "fulfilled")).toHaveLength(1);
+    expect(results.filter((result) => result.status === "rejected").map((result) => result.reason.code)).toEqual(["blog_draft_limit"]);
+    expect((await myBlog(store(), alice)).items).toHaveLength(BLOG_DRAFT_LIMIT);
   });
 
   it("filters by topic and pages results", async () => {
