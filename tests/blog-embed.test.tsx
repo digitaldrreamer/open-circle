@@ -1,6 +1,6 @@
 import { forwardRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { render, screen } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, it, vi } from "vitest";
 import { BlogBody } from "../src/components/blog/blog-body";
@@ -59,6 +59,40 @@ it("reports a cancelled embed as null", async () => {
   await user.type(screen.getByLabelText("Link"), "https://youtu.be/dQw4w9WgXcQ");
   await user.click(screen.getByRole("button", { name: "Cancel" }));
   expect(onDone).toHaveBeenCalledWith(null);
+});
+
+it("clears what is typed while the dialog fades out, so it is not there when it opens again", async () => {
+  // jsdom runs no CSS animations. This gives the dialog an exit animation that
+  // ends only when told to, as a browser's does once the fade finishes.
+  const styles = window.getComputedStyle.bind(window);
+  vi.spyOn(window, "getComputedStyle").mockImplementation((element, pseudo) => {
+    const computed = styles(element, pseudo);
+    if (element.getAttribute("role") !== "dialog") return computed;
+    return new Proxy(computed, { get: (target, key) => {
+      if (key === "animationName") return element.getAttribute("data-state") === "closed" ? "exit" : "enter";
+      const value = Reflect.get(target, key);
+      return typeof value === "function" ? value.bind(target) : value;
+    } });
+  });
+  if (!globalThis.CSS?.escape) vi.stubGlobal("CSS", { escape: (value: string) => value });
+  const user = userEvent.setup();
+  const onDone = vi.fn();
+  function Reopen() {
+    const [open, setOpen] = useState(true);
+    return <><button type="button" onClick={() => setOpen(true)}>Embed another</button><EmbedDialog open={open} onOpenChange={setOpen} onDone={onDone} /></>;
+  }
+  render(<Reopen />);
+  await user.type(screen.getByLabelText("Link"), "https://youtu.be/dQw4w9WgXcQ{Enter}");
+  const dialog = document.querySelector<HTMLElement>("[role=dialog]")!;
+  expect(dialog.getAttribute("data-state")).toBe("closed");
+  await user.type(screen.getByLabelText("Link"), "stray", { skipClick: true });
+  const ended = new Event("animationend", { bubbles: true });
+  Object.defineProperty(ended, "animationName", { value: "exit" });
+  act(() => { dialog.dispatchEvent(ended); });
+  expect(document.querySelector("[role=dialog]")).toBeNull();
+  await waitFor(() => expect(onDone).toHaveBeenCalledWith("https://youtu.be/dQw4w9WgXcQ"));
+  await user.click(screen.getByRole("button", { name: "Embed another" }));
+  expect(screen.getByLabelText<HTMLInputElement>("Link").value).toBe("");
 });
 
 it("only submits the post from its own form, not from a dialog inside the editor", async () => {
