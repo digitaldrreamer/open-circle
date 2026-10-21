@@ -1,15 +1,14 @@
 import "@mdxeditor/editor/style.css";
 import "./blog.css";
-import { forwardRef, useId, useImperativeHandle, useMemo, useRef, useState } from "react";
+import { forwardRef, useImperativeHandle, useMemo, useRef, useState } from "react";
 import {
   BlockTypeSelect, BoldItalicUnderlineToggles, ButtonWithTooltip, CodeToggle, CreateLink, DiffSourceToggleWrapper, InsertCodeBlock, InsertImage, InsertTable,
   InsertThematicBreak, ListsToggle, MDXEditor, Separator, StrikeThroughSupSubToggles, UndoRedo, codeBlockPlugin, codeMirrorPlugin, diffSourcePlugin, headingsPlugin,
   imagePlugin, linkDialogPlugin, linkPlugin, listsPlugin, markdownShortcutPlugin, quotePlugin, tablePlugin, thematicBreakPlugin, toolbarPlugin, type MDXEditorMethods,
 } from "@mdxeditor/editor";
 import { VideoFramePlayHorizontalIcon } from "@solar-icons/react/linear";
-import { blogEmbed } from "@shared/blog";
-import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
-import { TextureButton } from "@/components/ui/texture-button";
+import { EmbedDialog } from "./embed-dialog";
+import { placeEmbed } from "./place-embed";
 import { useTheme } from "@/hooks/use-theme";
 import { cn } from "@/lib/utils";
 
@@ -22,35 +21,10 @@ interface EmbedHandlers { start: (ready: () => void) => void; finish: (url: stri
 
 /** Adds a YouTube or Gist link on its own line, which the published post embeds. */
 function EmbedButton({ embed }: { embed: EmbedHandlers }) {
-  const id = useId();
   const [open, setOpen] = useState(false);
-  const [value, setValue] = useState("");
-  const [error, setError] = useState("");
-  const chosen = useRef<string | null>(null);
-  const close = () => { setOpen(false); setValue(""); setError(""); };
   return <>
-    <ButtonWithTooltip title="Embed a YouTube video or GitHub Gist" onClick={() => { chosen.current = null; embed.start(() => setOpen(true)); }}><VideoFramePlayHorizontalIcon className="size-5" aria-hidden /></ButtonWithTooltip>
-    <Dialog open={open} onOpenChange={(next) => { if (!next) close(); }}>
-      <DialogContent className="max-w-md" onCloseAutoFocus={(event) => { event.preventDefault(); embed.finish(chosen.current); chosen.current = null; }}>
-        <DialogTitle>Embed a video or Gist</DialogTitle>
-        <DialogDescription>Paste a YouTube video link or a GitHub Gist link. It goes on its own line and shows as a player or code in the published post.</DialogDescription>
-        <form className="space-y-3" onSubmit={(event) => {
-          event.preventDefault();
-          event.stopPropagation();
-          if (!blogEmbed(value)) { setError("That isn't a YouTube video or GitHub Gist link. Use an address like https://youtu.be/… or https://gist.github.com/user/…"); return; }
-          chosen.current = value.trim();
-          close();
-        }}>
-          <label htmlFor={`${id}-url`} className="block text-sm text-t2">Link</label>
-          <input id={`${id}-url`} type="url" inputMode="url" className="field h-11 w-full" value={value} autoFocus aria-invalid={!!error || undefined} aria-describedby={error ? `${id}-error` : undefined} onChange={(event) => { setValue(event.target.value); setError(""); }} placeholder="https://youtu.be/…" />
-          {error && <p id={`${id}-error`} role="alert" className="text-sm text-[hsl(var(--down))]">{error}</p>}
-          <div className="flex flex-wrap justify-end gap-2 pt-1">
-            <TextureButton type="button" variant="secondary" className="w-auto" onClick={close}>Cancel</TextureButton>
-            <TextureButton type="submit" className="w-auto">Embed</TextureButton>
-          </div>
-        </form>
-      </DialogContent>
-    </Dialog>
+    <ButtonWithTooltip title="Embed a YouTube video or GitHub Gist" onClick={() => embed.start(() => setOpen(true))}><VideoFramePlayHorizontalIcon className="size-5" aria-hidden /></ButtonWithTooltip>
+    <EmbedDialog open={open} onOpenChange={setOpen} onDone={embed.finish} />
   </>;
 }
 
@@ -113,10 +87,8 @@ const MarkdownEditor = forwardRef<MDXEditorMethods, { value: string; onChange: (
       const marker = placeholder.current;
       placeholder.current = null;
       if (!target) return;
-      const markdown = target.getMarkdown();
-      const placed = !!marker && markdown.includes(marker);
-      if (!url && !placed) return;
-      const next = placed ? markdown.replace(marker!, url ? `\n\n<${url}>\n\n` : "") : `${markdown.trimEnd()}\n\n<${url}>\n`;
+      const next = placeEmbed(target.getMarkdown(), marker, url);
+      if (next === null) return;
       target.setMarkdown(next);
       changed.current(next, false);
       const active = document.activeElement;
