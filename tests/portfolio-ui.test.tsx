@@ -9,7 +9,7 @@ import { defaultPortfolio, type PortfolioEditorState, type PublicPortfolio } fro
 import { COMMUNITY_KEY } from "../src/hooks/use-community";
 
 const profile = { id: 42, login: "Alice", avatarUrl: "https://avatars.githubusercontent.com/u/42" };
-function initial(): PortfolioEditorState { return { profile, draft: { ...defaultPortfolio(profile), displayName: "Alice Chen" }, version: 0, publishedAt: null, updatedAt: null, uploadsAvailable: false, subdomainsAvailable: false }; }
+function initial(): PortfolioEditorState { return { profile, posts: [], draft: { ...defaultPortfolio(profile), displayName: "Alice Chen" }, version: 0, publishedAt: null, updatedAt: null, uploadsAvailable: false, subdomainsAvailable: false }; }
 function mount(state = initial()) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity }, mutations: { retry: false } } });
   // The editor's avatar menu reads the signed-in account; seed it so the only
